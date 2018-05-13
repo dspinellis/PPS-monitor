@@ -70,13 +70,16 @@ def get_temp(t):
     """Return the temperature associated with a telegram"""
     return ((t[6] << 8) + t[7]) / 64.
 
-def print_telegram(t):
+def format_telegram(t):
+    """Format the passed telegram"""
+    r = ''
     for v in t:
-        print('%02x ' % v, end='')
-    print()
+        r += '%02x ' % v
+    r += '(T=%.1f)' % get_temp(t)
+    return r
 
 
-def monitor(port, nvalues):
+def monitor(port, nmessage, show_unknown):
     """Monitor PPS traffic"""
     NBITS = 10 # * bits plus start and stop
     CPS = BAUD / NBITS
@@ -90,56 +93,63 @@ def monitor(port, nvalues):
     GPIO.setup(12, GPIO.OUT, initial=GPIO.HIGH)
 
     with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
-        for i in range(int(nvalues)) if nvalues else count():
+        for i in range(int(nmessage)) if nmessage else count():
             t = get_telegram(ser)
+            unknown = False
             if t[0] == 0xfd:
-                print('Room unit:  ', end='')
+                peer = 'Room unit:'
             elif t[0] == 0x1d:
-                print('Controller: ', end='')
+                peer = 'Controller:'
             else:
-                continue
+                peer = '0x%02x:' % t[0]
+                unknown = True
             if t[1] == 0x08:
-                print('Set default room temp=%.1f' % get_temp(t))
+                action = 'Set default room temp=%.1f' % get_temp(t)
             elif t[1] == 0x09:
-                print('Set absent room temp=%.1f' % get_temp(t))
+                action = 'Set absent room temp=%.1f' % get_temp(t)
             elif t[1] == 0x0b:
-                print('Set DHW temp=%.1f' % get_temp(t))
+                action = 'Set DHW temp=%.1f' % get_temp(t)
             elif t[1] == 0x19:
-                print('Set room temp=%.1f' % get_temp(t))
+                action = 'Set room temp=%.1f' % get_temp(t)
             elif t[1] == 0x28:
-                print('Actual room temp=%.1f' % get_temp(t))
+                action = 'Actual room temp=%.1f' % get_temp(t)
             elif t[1] == 0x29:
-                print('Outside temp=%.1f' % get_temp(t))
+                action = 'Outside temp=%.1f' % get_temp(t)
             elif t[1] == 0x2c:
-                print('Actual heating water temp=%.1f' % get_temp(t))
+                action = 'Actual heating water temp=%.1f' % get_temp(t)
             elif t[1] == 0x2b:
-                print('Actual DHW temp=%.1f' % get_temp(t))
+                action = 'Actual DHW temp=%.1f' % get_temp(t)
             elif t[1] == 0x48:
-                print('Authority: %s' % ('room unit' if t[7] == 0 else 'controller'))
+                action = 'Authority: %s' % ('room unit' if t[7] == 0 else 'controller')
             elif t[1] == 0x49:
-                print('Mode: %s' % room_unit_mode[t[7]])
+                action = 'Mode: %s' % room_unit_mode[t[7]]
             elif t[1] == 0x49:
-                print('Mode: %s' % room_unit_mode[t[7]])
+                action = 'Mode: %s' % room_unit_mode[t[7]]
             elif t[1] == 0x4c:
-                print('Present: %s' % ('true' if t[7] else 'false'))
+                action = 'Present: %s' % ('true' if t[7] else 'false')
             elif t[1] == 0x7c:
-                print('Remaining absence days: %d' % t[7])
+                action = 'Remaining absence days: %d' % t[7]
             else:
-                print('T=%10.1f ' % get_temp(t), end='')
-                print_telegram(t)
+                action = format_telegram(t)
+                unknown = True
+            if not unknown or show_unknown:
+                print('%-12s %s' % (peer, action))
     GPIO.cleanup()
 
 def main():
     """Program entry point"""
     parser = argparse.ArgumentParser(
-        description='Generic Python program')
+        description='PPS monitoring program')
+    parser.add_argument('-n', '--nmessage',
+                        help='Number of messages to process (default: infinite)')
     parser.add_argument('-p', '--port',
                         help='Serial port', default='/dev/serial0')
-    parser.add_argument('-n', '--nvalues',
-                        help='Number of values to log (default: infinite)')
+    parser.add_argument('-u', '--unknown',
+                        help='Show unknown telegrams',
+                        action='store_true')
 
     args = parser.parse_args()
-    monitor(args.port, args.nvalues)
+    monitor(args.port, args.nmessage, args.unknown)
 
 if __name__ == "__main__":
     main()
