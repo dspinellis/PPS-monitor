@@ -16,7 +16,7 @@
 #
 
 """
-PSP monitoring program
+PPS/H-Bus monitoring program
 """
 
 from __future__ import absolute_import
