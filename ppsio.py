@@ -64,6 +64,17 @@ def get_telegram(ser):
         elif len(t) != 1:
                 sys.stderr.write("Invalid telegram length %d\n" % len(t))
 
+
+def get_temp(t):
+    """Return the temperature associated with a telegram"""
+    return ((t[6] << 8) + t[7]) / 64.
+
+def print_telegram(t):
+    for v in t:
+        print('%02x ' % v, end='')
+    print()
+
+
 def monitor(port):
     """Monitor PPS traffic"""
     NBITS = 10 # * bits plus start and stop
@@ -81,11 +92,28 @@ def monitor(port):
     with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
         while True:
             t = get_telegram(ser)
-            for v in t:
-                print('%02x ' % v, end='')
-            if len(t) == 9:
-                print('- %02x ' % crc(t[:-1]), end='')
-            print()
+            print('From %02x: ' % t[0], end='')
+            if t[1] == 0x08:
+                print('Set room temp=%.1f' % get_temp(t))
+            elif t[1] == 0x09:
+                print('Set absent room temp=%.1f' % get_temp(t))
+            elif t[1] == 0x0c:
+                print('Set DHW temp=%.1f' % get_temp(t))
+            elif t[1] == 0x0e:
+                print('Set Vorlauf ? temp=%.1f' % get_temp(t))
+            elif t[1] == 0x1e:
+                print('Set DHW ? temp=%.1f' % get_temp(t))
+            elif t[1] == 0x29:
+                print('Outside temp=%.1f' % get_temp(t))
+            elif t[1] == 0x2c:
+                print('Mischervorlauf temp=%.1f' % get_temp(t))
+            elif t[1] == 0x2b:
+                print('Actual DHW temp=%.1f' % get_temp(t))
+            elif t[1] == 0x57:
+                print('Actual Vorlauf temp=%.1f' % get_temp(t))
+            else:
+                print('T=%10.1f ' % get_temp(t), end='')
+                print_telegram(t)
     GPIO.cleanup()
 
 def main():
