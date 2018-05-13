@@ -83,8 +83,7 @@ def monitor(port, nvalues):
     # Timeout if nothing received for ten characters
     TIMEOUT = 1. / CPS * 10
 
-    # Start of frame bytes
-    SOF = [0x17, 0x1d, 0x1e]
+    room_unit_mode = ['Timed', 'Manual', 'Off']
 
     # Setup 3.3V on pin 12, as required by the circuit board
     GPIO.setmode(GPIO.BOARD)
@@ -98,31 +97,33 @@ def monitor(port, nvalues):
             elif t[0] == 0x1d:
                 print('Controller: ', end='')
             else:
-                print('From %02x: ' % t[0], end='')
+                continue
             if t[1] == 0x08:
-                print('Default room temp=%.1f' % get_temp(t))
+                print('Set default room temp=%.1f' % get_temp(t))
             elif t[1] == 0x09:
                 print('Set absent room temp=%.1f' % get_temp(t))
             elif t[1] == 0x0b:
                 print('Set DHW temp=%.1f' % get_temp(t))
-            elif t[1] == 0x0e:
-                print('Set Vorlauf ? temp=%.1f' % get_temp(t))
             elif t[1] == 0x19:
                 print('Set room temp=%.1f' % get_temp(t))
-            elif t[1] == 0x1e:
-                print('Set DHW ? temp=%.1f' % get_temp(t))
             elif t[1] == 0x28:
-                print('Room temp=%.1f' % get_temp(t))
+                print('Actual room temp=%.1f' % get_temp(t))
             elif t[1] == 0x29:
                 print('Outside temp=%.1f' % get_temp(t))
             elif t[1] == 0x2c:
-                print('Heating water temp=%.1f' % get_temp(t))
+                print('Actual heating water temp=%.1f' % get_temp(t))
             elif t[1] == 0x2b:
                 print('Actual DHW temp=%.1f' % get_temp(t))
+            elif t[1] == 0x48:
+                print('Authority: %s' % ('room unit' if t[7] == 0 else 'controller'))
+            elif t[1] == 0x49:
+                print('Mode: %s' % room_unit_mode[t[7]])
+            elif t[1] == 0x49:
+                print('Mode: %s' % room_unit_mode[t[7]])
             elif t[1] == 0x4c:
-                print('Present %s' % ('true' if t[7] else 'false'))
-            elif t[1] == 0x57:
-                print('Actual Vorlauf temp=%.1f' % get_temp(t))
+                print('Present: %s' % ('true' if t[7] else 'false'))
+            elif t[1] == 0x7c:
+                print('Remaining absence days: %d' % t[7])
             else:
                 print('T=%10.1f ' % get_temp(t), end='')
                 print_telegram(t)
