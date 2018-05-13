@@ -21,6 +21,7 @@ Generic program
 
 from __future__ import absolute_import
 from __future__ import print_function
+from itertools import count
 import argparse
 import re
 import RPi.GPIO as GPIO
@@ -75,7 +76,7 @@ def print_telegram(t):
     print()
 
 
-def monitor(port):
+def monitor(port, nvalues):
     """Monitor PPS traffic"""
     NBITS = 10 # * bits plus start and stop
     CPS = BAUD / NBITS
@@ -90,7 +91,7 @@ def monitor(port):
     GPIO.setup(12, GPIO.OUT, initial=GPIO.HIGH)
 
     with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
-        while True:
+        for i in range(int(nvalues)) if nvalues else count():
             t = get_telegram(ser)
             if t[0] == 0xfd:
                 print('Room unit:  ', end='')
@@ -132,15 +133,12 @@ def main():
     parser = argparse.ArgumentParser(
         description='Generic Python program')
     parser.add_argument('-p', '--port',
-                        help='Serial port (/dev/serial0 by default)',
-                        action='store_true')
+                        help='Serial port', default='/dev/serial0')
+    parser.add_argument('-n', '--nvalues',
+                        help='Number of values to log (default: infinite)')
 
     args = parser.parse_args()
-    if args.port:
-        port = args.port
-    else:
-        port = '/dev/serial0'
-    monitor(port)
+    monitor(args.port, args.nvalues)
 
 if __name__ == "__main__":
     main()
