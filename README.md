@@ -18,10 +18,9 @@ The program will monitor the following values.
 * Set room temperature
 * Actual room temperature
 * Outside temperature
-* Actual heating water temperature
+* Actual flow temperature
 * Actual DHW temperature
 * Authority
-* Mode
 * Mode
 * Present
 * Remaining absence days
@@ -45,7 +44,7 @@ optional arguments:
 ```
 $ sudo ./ppsmon.py -n 10
 Room unit:  Actual room temp: 21.7
-Controller: Actual heating water temp: 22.1
+Controller: Actual flow temp: 22.1
 Room unit:  Set room temp: 19.0
 Controller: Authority: remote
 Room unit:  Mode: timed
@@ -54,7 +53,7 @@ Room unit:  Mode: timed
 ## Example: Process 150 messages, outputting CSV records
 ```
 $ sudo ./ppsio.py  -n 150 -c
-time,Actual DHW temp,Actual heating water temp,Actual room temp,Authority,Mode,Outside temp,Present,Set DHW temp,Set absent room temp,Set default room temp,Set room temp
+time,Actual DHW temp,Actual flow temp,Actual room temp,Authority,Mode,Outside temp,Present,Set DHW temp,Set absent room temp,Set default room temp,Set room temp
 1526237678,54.7,22.2,21.8,remote,timed,18.3,true,40.0,15.0,20.0,19.0
 1526237698,54.6,22.2,21.8,remote,timed,18.3,true,40.0,15.0,20.0,19.0
 1526237718,54.5,22.2,21.8,remote,timed,18.3,true,40.0,15.0,20.0,19.0

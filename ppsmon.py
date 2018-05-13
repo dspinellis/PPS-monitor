@@ -96,13 +96,11 @@ def decode_telegram(t):
     elif t[1] == 0x29:
         return ('Outside temp', get_temp(t))
     elif t[1] == 0x2c:
-        return ('Actual heating water temp', get_temp(t))
+        return ('Actual flow temp', get_temp(t))
     elif t[1] == 0x2b:
         return ('Actual DHW temp', get_temp(t))
     elif t[1] == 0x48:
         return ('Authority', ('remote' if t[7] == 0 else 'controller'))
-    elif t[1] == 0x49:
-        return ('Mode', room_unit_mode[t[7]])
     elif t[1] == 0x49:
         return ('Mode', room_unit_mode[t[7]])
     elif t[1] == 0x4c:
