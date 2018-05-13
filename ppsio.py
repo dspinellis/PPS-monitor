@@ -23,11 +23,11 @@ from __future__ import absolute_import
 from __future__ import print_function
 from itertools import count
 import argparse
-import re
 import RPi.GPIO as GPIO
-import serial
-import struct
+from serial import Serial
+from struct import unpack
 import sys
+from time import time
 
 BAUD = 4800
 
@@ -37,7 +37,7 @@ def get_raw_telegram(ser):
     while True:
         b = ser.read()
         if b:
-            v = struct.unpack('B', b)[0]
+            v = unpack('B', b)[0]
             t.append(v)
             if t == [0x17]:
                 return t
@@ -65,17 +65,16 @@ def get_telegram(ser):
         elif len(t) != 1:
                 sys.stderr.write("Invalid telegram length %d\n" % len(t))
 
-
 def get_temp(t):
-    """Return the temperature associated with a telegram"""
-    return ((t[6] << 8) + t[7]) / 64.
+    """Return the temperature associated with a telegram as a string"""
+    return '%.1f' % (((t[6] << 8) + t[7]) / 64.)
 
 def format_telegram(t):
     """Format the passed telegram"""
     r = ''
     for v in t:
         r += '%02x ' % v
-    r += '(T=%.1f)' % get_temp(t)
+    r += '(T=%s)' % get_temp(t)
     return r
 
 def decode_telegram(t):
@@ -85,31 +84,31 @@ def decode_telegram(t):
     room_unit_mode = ['timed', 'manual', 'off']
 
     if t[1] == 0x08:
-        return ('Set default room temp: %.1f', get_temp(t))
+        return ('Set default room temp', get_temp(t))
     elif t[1] == 0x09:
-        return ('Set absent room temp: %.1f', get_temp(t))
+        return ('Set absent room temp', get_temp(t))
     elif t[1] == 0x0b:
-        return ('Set DHW temp: %.1f', get_temp(t))
+        return ('Set DHW temp', get_temp(t))
     elif t[1] == 0x19:
-        return ('Set room temp: %.1f', get_temp(t))
+        return ('Set room temp', get_temp(t))
     elif t[1] == 0x28:
-        return ('Actual room temp: %.1f', get_temp(t))
+        return ('Actual room temp', get_temp(t))
     elif t[1] == 0x29:
-        return ('Outside temp: %.1f', get_temp(t))
+        return ('Outside temp', get_temp(t))
     elif t[1] == 0x2c:
-        return ('Actual heating water temp: %.1f', get_temp(t))
+        return ('Actual heating water temp', get_temp(t))
     elif t[1] == 0x2b:
-        return ('Actual DHW temp: %.1f', get_temp(t))
+        return ('Actual DHW temp', get_temp(t))
     elif t[1] == 0x48:
-        return ('Authority: %s', ('remote' if t[7] == 0 else 'controller'))
+        return ('Authority', ('remote' if t[7] == 0 else 'controller'))
     elif t[1] == 0x49:
-        return ('Mode: %s', room_unit_mode[t[7]])
+        return ('Mode', room_unit_mode[t[7]])
     elif t[1] == 0x49:
-        return ('Mode: %s', room_unit_mode[t[7]])
+        return ('Mode', room_unit_mode[t[7]])
     elif t[1] == 0x4c:
-        return ('Present: %s', ('true' if t[7] else 'false'))
+        return ('Present', ('true' if t[7] else 'false'))
     elif t[1] == 0x7c:
-        return ('Remaining absence days: %d', t[7])
+        return ('Remaining absence days', t[7])
     else:
         return (None, None)
 
@@ -123,18 +122,36 @@ def decode_peer(t):
     else:
         return ('0x%02x:' % val, False)
 
-def monitor(port, nmessage, show_unknown):
+def print_csv(d):
+    """Output the elements of the passed CSV record in a consistent order"""
+    print(int(time()), end='')
+    for key in sorted(d.iterkeys()):
+        print(',' + d[key], end='')
+    print()
+
+def print_csv_header(d):
+    """Output the header of the passed CSV record in a consistent order"""
+    print('time', end='')
+    for key in sorted(d.iterkeys()):
+        print(',' + key, end='')
+    print()
+
+def monitor(port, nmessage, show_unknown, csv_output):
     """Monitor PPS traffic"""
+    CSV_ELEMENTS = 11   # Number of elements per CSV record
     NBITS = 10 # * bits plus start and stop
     CPS = BAUD / NBITS
     # Timeout if nothing received for ten characters
     TIMEOUT = 1. / CPS * 10
 
+
     # Setup 3.3V on pin 12, as required by the circuit board
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(12, GPIO.OUT, initial=GPIO.HIGH)
 
-    with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
+    with Serial(port, BAUD, timeout=TIMEOUT) as ser:
+        csv_record = {}
+        printed_csv_header = False
         for i in range(int(nmessage)) if nmessage else count():
             t = get_telegram(ser)
             known = True
@@ -145,7 +162,16 @@ def monitor(port, nmessage, show_unknown):
             if not known_peer:
                 known = False
             if known:
-                print('%-11s %s' % (peer, message % value))
+                if csv_output:
+                    csv_record[message] = value
+                    if len(csv_record) == CSV_ELEMENTS:
+                        if not printed_csv_header:
+                            print_csv_header(csv_record)
+                            printed_csv_header = True
+                        print_csv(csv_record)
+                        csv_record = {}
+                else:
+                    print('%-11s %s: %s' % (peer, message,value))
             elif show_unknown:
                 print('%-11s %s' % (peer, format_telegram(t)))
     GPIO.cleanup()
@@ -154,6 +180,9 @@ def main():
     """Program entry point"""
     parser = argparse.ArgumentParser(
         description='PPS monitoring program')
+    parser.add_argument('-c', '--csv',
+                        help='Output CSV records',
+                        action='store_true')
     parser.add_argument('-n', '--nmessage',
                         help='Number of messages to process (default: infinite)')
     parser.add_argument('-p', '--port',
@@ -164,7 +193,7 @@ def main():
                         action='store_true')
 
     args = parser.parse_args()
-    monitor(args.port, args.nmessage, args.unknown)
+    monitor(args.port, args.nmessage, args.unknown, args.csv)
 
 if __name__ == "__main__":
     main()
