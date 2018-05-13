@@ -16,7 +16,7 @@
 #
 
 """
-Generic program
+PSP monitoring program
 """
 
 from __future__ import absolute_import
@@ -143,7 +143,8 @@ def main():
     parser.add_argument('-n', '--nmessage',
                         help='Number of messages to process (default: infinite)')
     parser.add_argument('-p', '--port',
-                        help='Serial port', default='/dev/serial0')
+                        help='Serial port to access (default: /dev/serial0',
+                        default='/dev/serial0')
     parser.add_argument('-u', '--unknown',
                         help='Show unknown telegrams',
                         action='store_true')
