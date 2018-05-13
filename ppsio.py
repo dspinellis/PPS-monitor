@@ -78,6 +78,50 @@ def format_telegram(t):
     r += '(T=%.1f)' % get_temp(t)
     return r
 
+def decode_telegram(t):
+    """Decode the passed telegram into a message and its value.
+    The values are None if the telegram is unknown"""
+
+    room_unit_mode = ['timed', 'manual', 'off']
+
+    if t[1] == 0x08:
+        return ('Set default room temp: %.1f', get_temp(t))
+    elif t[1] == 0x09:
+        return ('Set absent room temp: %.1f', get_temp(t))
+    elif t[1] == 0x0b:
+        return ('Set DHW temp: %.1f', get_temp(t))
+    elif t[1] == 0x19:
+        return ('Set room temp: %.1f', get_temp(t))
+    elif t[1] == 0x28:
+        return ('Actual room temp: %.1f', get_temp(t))
+    elif t[1] == 0x29:
+        return ('Outside temp: %.1f', get_temp(t))
+    elif t[1] == 0x2c:
+        return ('Actual heating water temp: %.1f', get_temp(t))
+    elif t[1] == 0x2b:
+        return ('Actual DHW temp: %.1f', get_temp(t))
+    elif t[1] == 0x48:
+        return ('Authority: %s', ('remote' if t[7] == 0 else 'controller'))
+    elif t[1] == 0x49:
+        return ('Mode: %s', room_unit_mode[t[7]])
+    elif t[1] == 0x49:
+        return ('Mode: %s', room_unit_mode[t[7]])
+    elif t[1] == 0x4c:
+        return ('Present: %s', ('true' if t[7] else 'false'))
+    elif t[1] == 0x7c:
+        return ('Remaining absence days: %d', t[7])
+    else:
+        return (None, None)
+
+def decode_peer(t):
+    """ Return the peer by its name, and True if the peer is known"""
+    val = t[0]
+    if val == 0xfd:
+        return ('Room unit:', True)
+    elif val == 0x1d:
+        return ('Controller:', True)
+    else:
+        return ('0x%02x:' % val, False)
 
 def monitor(port, nmessage, show_unknown):
     """Monitor PPS traffic"""
@@ -86,8 +130,6 @@ def monitor(port, nmessage, show_unknown):
     # Timeout if nothing received for ten characters
     TIMEOUT = 1. / CPS * 10
 
-    room_unit_mode = ['Timed', 'Manual', 'Off']
-
     # Setup 3.3V on pin 12, as required by the circuit board
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(12, GPIO.OUT, initial=GPIO.HIGH)
@@ -95,45 +137,17 @@ def monitor(port, nmessage, show_unknown):
     with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
         for i in range(int(nmessage)) if nmessage else count():
             t = get_telegram(ser)
-            unknown = False
-            if t[0] == 0xfd:
-                peer = 'Room unit:'
-            elif t[0] == 0x1d:
-                peer = 'Controller:'
-            else:
-                peer = '0x%02x:' % t[0]
-                unknown = True
-            if t[1] == 0x08:
-                action = 'Set default room temp=%.1f' % get_temp(t)
-            elif t[1] == 0x09:
-                action = 'Set absent room temp=%.1f' % get_temp(t)
-            elif t[1] == 0x0b:
-                action = 'Set DHW temp=%.1f' % get_temp(t)
-            elif t[1] == 0x19:
-                action = 'Set room temp=%.1f' % get_temp(t)
-            elif t[1] == 0x28:
-                action = 'Actual room temp=%.1f' % get_temp(t)
-            elif t[1] == 0x29:
-                action = 'Outside temp=%.1f' % get_temp(t)
-            elif t[1] == 0x2c:
-                action = 'Actual heating water temp=%.1f' % get_temp(t)
-            elif t[1] == 0x2b:
-                action = 'Actual DHW temp=%.1f' % get_temp(t)
-            elif t[1] == 0x48:
-                action = 'Authority: %s' % ('room unit' if t[7] == 0 else 'controller')
-            elif t[1] == 0x49:
-                action = 'Mode: %s' % room_unit_mode[t[7]]
-            elif t[1] == 0x49:
-                action = 'Mode: %s' % room_unit_mode[t[7]]
-            elif t[1] == 0x4c:
-                action = 'Present: %s' % ('true' if t[7] else 'false')
-            elif t[1] == 0x7c:
-                action = 'Remaining absence days: %d' % t[7]
-            else:
-                action = format_telegram(t)
-                unknown = True
-            if not unknown or show_unknown:
-                print('%-12s %s' % (peer, action))
+            known = True
+            (message, value) = decode_telegram(t)
+            if not value:
+                known = False
+            (peer, known_peer) = decode_peer(t)
+            if not known_peer:
+                known = False
+            if known:
+                print('%-11s %s' % (peer, message % value))
+            elif show_unknown:
+                print('%-11s %s' % (peer, format_telegram(t)))
     GPIO.cleanup()
 
 def main():
