@@ -38,6 +38,8 @@ def get_telegram(ser):
         if b:
             v = struct.unpack('B', b)[0]
             t.append(v)
+            if t == [0x17]:
+                return t
         else:
             if t:
                 return t
@@ -60,7 +62,7 @@ def monitor(port):
         while True:
             t = get_telegram(ser)
             for v in t:
-                print('%02x ' % v, end=("\n" if v == 0x17 else ''))
+                print('%02x ' % v, end='')
             print()
     GPIO.cleanup()
 
