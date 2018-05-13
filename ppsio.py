@@ -28,25 +28,40 @@ import serial
 import struct
 import sys
 
-RE_INTEGER = re.compile(r'(\d+)')
+BAUD = 4800
+
+def get_telegram(ser):
+    """Receive a telegram sequence, terminated by more than one char time"""
+    t = []
+    while True:
+        b = ser.read()
+        if b:
+            v = struct.unpack('B', b)[0]
+            t.append(v)
+        else:
+            if t:
+                return t
 
 def monitor(port):
     """Monitor PPS traffic"""
+    NBITS = 10 # * bits plus start and stop
+    CPS = BAUD / NBITS
+    # Timeout if nothing received for ten characters
+    TIMEOUT = 1. / CPS * 10
 
     # Start of frame bytes
+    SOF = [0x17, 0x1d, 0x1e]
 
     # Setup 3.3V on pin 12, as required by the circuit board
     GPIO.setmode(GPIO.BOARD)
     GPIO.setup(12, GPIO.OUT, initial=GPIO.HIGH)
 
-    SOF = [0x17, 0x1d, 0x1e]
-    with serial.Serial(port, 4800) as ser:
+    with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
         while True:
-            b = ser.read()
-            v = struct.unpack('B', b)[0]
-            if v in SOF:
-                print()
-            print('%02x ' % v, end='')
+            t = get_telegram(ser)
+            for v in t:
+                print('%02x ' % v, end=("\n" if v == 0x17 else ''))
+            print()
     GPIO.cleanup()
 
 def main():
