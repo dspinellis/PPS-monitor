@@ -30,7 +30,7 @@ import sys
 
 BAUD = 4800
 
-def get_telegram(ser):
+def get_raw_telegram(ser):
     """Receive a telegram sequence, terminated by more than one char time"""
     t = []
     while True:
@@ -43,6 +43,26 @@ def get_telegram(ser):
         else:
             if t:
                 return t
+
+def crc(t):
+    """Calculate a telegram's CRC"""
+    sum = 0
+    for v in t:
+        sum += v
+    sum &= 0xff
+    return 0xff - sum + 1
+
+def get_telegram(ser):
+    """ Return a full verified telegram"""
+    while True:
+        t = get_raw_telegram(ser)
+        if len(t) == 9:
+            if crc(t[:-1]) == t[-1]:
+                return t[:-1]
+            else:
+                sys.stderr.write("CRC error in received telegram\n")
+        elif len(t) != 1:
+                sys.stderr.write("Invalid telegram length %d\n" % len(t))
 
 def monitor(port):
     """Monitor PPS traffic"""
@@ -63,6 +83,8 @@ def monitor(port):
             t = get_telegram(ser)
             for v in t:
                 print('%02x ' % v, end='')
+            if len(t) == 9:
+                print('- %02x ' % crc(t[:-1]), end='')
             print()
     GPIO.cleanup()
 
