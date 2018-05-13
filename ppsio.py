@@ -92,23 +92,34 @@ def monitor(port):
     with serial.Serial(port, BAUD, timeout=TIMEOUT) as ser:
         while True:
             t = get_telegram(ser)
-            print('From %02x: ' % t[0], end='')
+            if t[0] == 0xfd:
+                print('Room unit:  ', end='')
+            elif t[0] == 0x1d:
+                print('Controller: ', end='')
+            else:
+                print('From %02x: ' % t[0], end='')
             if t[1] == 0x08:
-                print('Set room temp=%.1f' % get_temp(t))
+                print('Default room temp=%.1f' % get_temp(t))
             elif t[1] == 0x09:
                 print('Set absent room temp=%.1f' % get_temp(t))
-            elif t[1] == 0x0c:
+            elif t[1] == 0x0b:
                 print('Set DHW temp=%.1f' % get_temp(t))
             elif t[1] == 0x0e:
                 print('Set Vorlauf ? temp=%.1f' % get_temp(t))
+            elif t[1] == 0x19:
+                print('Set room temp=%.1f' % get_temp(t))
             elif t[1] == 0x1e:
                 print('Set DHW ? temp=%.1f' % get_temp(t))
+            elif t[1] == 0x28:
+                print('Room temp=%.1f' % get_temp(t))
             elif t[1] == 0x29:
                 print('Outside temp=%.1f' % get_temp(t))
             elif t[1] == 0x2c:
-                print('Mischervorlauf temp=%.1f' % get_temp(t))
+                print('Heating water temp=%.1f' % get_temp(t))
             elif t[1] == 0x2b:
                 print('Actual DHW temp=%.1f' % get_temp(t))
+            elif t[1] == 0x4c:
+                print('Present %s' % ('true' if t[7] else 'false'))
             elif t[1] == 0x57:
                 print('Actual Vorlauf temp=%.1f' % get_temp(t))
             else:
