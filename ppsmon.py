@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# coding: utf-8
 #
 # Copyright 2018 Diomidis Spinellis
 #
@@ -21,8 +22,9 @@ PPS/H-Bus monitoring program
 
 from __future__ import absolute_import
 from __future__ import print_function
-from itertools import count
 import argparse
+import os
+from itertools import count
 import RPi.GPIO as GPIO
 from serial import Serial
 from struct import unpack
@@ -69,6 +71,11 @@ def get_temp(t):
     """Return the temperature associated with a telegram as a string"""
     return '%.1f' % (((t[6] << 8) + t[7]) / 64.)
 
+def get_raw_temp(t):
+    """Return the temperature associated with a telegram as an integer
+    multiplied by 64"""
+    return ((t[6] << 8) + t[7])
+
 def format_telegram(t):
     """Format the passed telegram"""
     r = ''
@@ -78,37 +85,38 @@ def format_telegram(t):
     return r
 
 def decode_telegram(t):
-    """Decode the passed telegram into a message and its value.
+    """Decode the passed telegram into a message and its formatted and
+    raw value.
     The values are None if the telegram is unknown"""
 
     room_unit_mode = ['timed', 'manual', 'off']
 
     if t[1] == 0x08:
-        return ('Set default room temp', get_temp(t))
+        return ('Set present room temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x09:
-        return ('Set absent room temp', get_temp(t))
+        return ('Set absent room temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x0b:
-        return ('Set DHW temp', get_temp(t))
+        return ('Set DHW temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x19:
-        return ('Set room temp', get_temp(t))
+        return ('Set room temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x28:
-        return ('Actual room temp', get_temp(t))
+        return ('Actual room temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x29:
-        return ('Outside temp', get_temp(t))
+        return ('Outside temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x2c:
-        return ('Actual flow temp', get_temp(t))
+        return ('Actual flow temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x2b:
-        return ('Actual DHW temp', get_temp(t))
+        return ('Actual DHW temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x48:
-        return ('Authority', ('remote' if t[7] == 0 else 'controller'))
+        return ('Authority', ('remote' if t[7] == 0 else 'controller'), t[7])
     elif t[1] == 0x49:
-        return ('Mode', room_unit_mode[t[7]])
+        return ('Mode', room_unit_mode[t[7]], t[7])
     elif t[1] == 0x4c:
-        return ('Present', ('true' if t[7] else 'false'))
+        return ('Present', ('true' if t[7] else 'false'), t[7])
     elif t[1] == 0x7c:
-        return ('Remaining absence days', t[7])
+        return ('Remaining absence days', t[7], t[7])
     else:
-        return (None, None)
+        return (None, None, None)
 
 def decode_peer(t):
     """ Return the peer by its name, and True if the peer is known"""
@@ -150,6 +158,7 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
 
     with Serial(port, BAUD, timeout=TIMEOUT) as ser:
         csv_record = {}
+        raw_record = {}
         if header_output:
             must_print_csv_header = True
         else:
@@ -157,7 +166,7 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
         for i in range(int(nmessage)) if nmessage else count():
             t = get_telegram(ser)
             known = True
-            (message, value) = decode_telegram(t)
+            (message, value, raw) = decode_telegram(t)
             if not value:
                 known = False
             (peer, known_peer) = decode_peer(t)
@@ -166,6 +175,7 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
             if known:
                 if csv_output:
                     csv_record[message] = value
+                    raw_record[message] = raw
                     if len(csv_record) == CSV_ELEMENTS:
                         if must_print_csv_header:
                             print_csv_header(out, csv_record)
@@ -174,12 +184,87 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
                         csv_record = {}
                 else:
                     out.write("%-11s %s: %s\n" % (peer, message, value))
+                if netdata_output:
+                    raw_record[message] = raw
+                    if len(raw_record) == CSV_ELEMENTS:
+                        netdata_set_values(raw_record)
+                        raw_record = {}
             elif show_unknown:
                 out.write("%-11s %s\n" % (peer, format_telegram(t)))
     GPIO.cleanup()
 
+def netdata_set_values(r):
+    """Output the values of a completed record"""
+    print('BEGIN Heating.ambient')
+    print('SET t_room_set = %d' % r['Set room temp'])
+    print('SET t_room_actual = %d' % r['Actual room temp'])
+    print('SET t_outside = %d' % r['Outside temp'])
+    print('END')
+
+    print('BEGIN Heating.dhw')
+    print('SET t_dhw_set = %d' % r['Set DHW temp'])
+    print('SET t_dhw_actual = %d' % r['Actual DHW temp'])
+    print('END')
+
+    print('BEGIN Heating.flow')
+    print('SET t_heating = %d' % r['Actual flow temp'])
+    print('END')
+
+    print('BEGIN Heating.set_point')
+    print('SET t_present = %d' % r['Set present room temp'])
+    print('SET t_absent = %d' % r['Set absent room temp'])
+    print('END')
+
+    print('BEGIN Heating.present')
+    print('SET present = %d' % r['Present'])
+    print('END')
+
+    print('BEGIN Heating.mode')
+    print('SET mode = %d' % r['Mode'])
+    print('END')
+
+    print('BEGIN Heating.authority')
+    print('SET authority = %d' % r['Authority'])
+    print('END')
+    sys.stdout.flush()
+
+def netdata_configure():
+    """Configure the supported Netdata charts"""
+    sys.stdout.write("""
+CHART Heating.ambient 'Ambient T' 'Ambient temperature' 'Celsius' Temperatures Heating line 110
+DIMENSION t_room_set 'Set room temperature' absolute 1 64
+DIMENSION t_room_actual 'Actual room temperature' absolute 1 64
+DIMENSION t_outside 'Outside temperature' absolute 1 64
+
+CHART Heating.dhw 'Domestic hot water T' 'DHW temperature' 'Celsius' Temperatures Heating line 120
+DIMENSION t_dhw_set 'Set DHW temperature' absolute 1 64
+DIMENSION t_dhw_actual 'Actual DHW temperature' absolute 1 64
+
+CHART Heating.flow 'Heating water T' 'Heating temperature' 'Celsius' Temperatures Heating line 130
+DIMENSION t_heating 'Heating temperature' absolute 1 64
+
+CHART Heating.set_point 'Set temperatures' 'Set temperatures' 'Celsius' Temperatures Heating line 140
+DIMENSION t_present 'Present room temperature' absolute 1 64
+DIMENSION t_absent 'Absent room temperature' absolute 1 64
+
+CHART Heating.present 'Present' 'Present' 'False/True' Control Heating line 150
+DIMENSION present 'Present' absolute
+
+CHART Heating.authority 'Authority' 'Authority' 'Remote/Controller' Control Heating line 160
+DIMENSION authority 'Authority' absolute
+
+CHART Heating.mode 'Mode' 'Mode' 'Timed/Manual/Off' Control Heating line 170
+DIMENSION mode 'Mode' 'Mode' 'Timed/Manual/Off'
+""")
+
 def main():
     """Program entry point"""
+
+    # Remove any Netdata-supplied update_every argument
+    if 'NETDATA_UPDATE_EVERY' in os.environ:
+        update_every = sys.argv[1]
+        del sys.argv[1]
+
     parser = argparse.ArgumentParser(
         description='PPS monitoring program')
     parser.add_argument('-c', '--csv',
@@ -204,9 +289,11 @@ def main():
 
     args = parser.parse_args()
     if args.output:
-        out = open(args.output, 'wa')
+        out = open(args.output, 'a')
     else:
         out = sys.stdout
+    if args.netdata:
+        netdata_configure()
     monitor(args.port, args.nmessage, args.unknown, out, args.csv,
             args.header, args.netdata)
 
