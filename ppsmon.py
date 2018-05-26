@@ -120,21 +120,22 @@ def decode_peer(t):
     else:
         return ('0x%02x:' % val, False)
 
-def print_csv(d):
+def print_csv(out, d):
     """Output the elements of the passed CSV record in a consistent order"""
-    print(int(time()), end='')
+    out.write(str(int(time())))
     for key in sorted(d.iterkeys()):
-        print(',' + d[key], end='')
-    print()
+        out.write(',' + d[key])
+    out.write("\n")
 
-def print_csv_header(d):
+def print_csv_header(out, d):
     """Output the header of the passed CSV record in a consistent order"""
-    print('time', end='')
+    out.write('time')
     for key in sorted(d.iterkeys()):
-        print(',' + key, end='')
-    print()
+        out.write(',' + key)
+    out.write("\n")
 
-def monitor(port, nmessage, show_unknown, csv_output):
+def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
+            netdata_output):
     """Monitor PPS traffic"""
     CSV_ELEMENTS = 11   # Number of elements per CSV record
     NBITS = 10 # * bits plus start and stop
@@ -149,7 +150,10 @@ def monitor(port, nmessage, show_unknown, csv_output):
 
     with Serial(port, BAUD, timeout=TIMEOUT) as ser:
         csv_record = {}
-        printed_csv_header = False
+        if header_output:
+            must_print_csv_header = True
+        else:
+            must_print_csv_header = False
         for i in range(int(nmessage)) if nmessage else count():
             t = get_telegram(ser)
             known = True
@@ -163,15 +167,15 @@ def monitor(port, nmessage, show_unknown, csv_output):
                 if csv_output:
                     csv_record[message] = value
                     if len(csv_record) == CSV_ELEMENTS:
-                        if not printed_csv_header:
-                            print_csv_header(csv_record)
-                            printed_csv_header = True
-                        print_csv(csv_record)
+                        if must_print_csv_header:
+                            print_csv_header(out, csv_record)
+                            must_print_csv_header = False
+                        print_csv(out, csv_record)
                         csv_record = {}
                 else:
-                    print('%-11s %s: %s' % (peer, message,value))
+                    out.write("%-11s %s: %s\n" % (peer, message, value))
             elif show_unknown:
-                print('%-11s %s' % (peer, format_telegram(t)))
+                out.write("%-11s %s\n" % (peer, format_telegram(t)))
     GPIO.cleanup()
 
 def main():
@@ -181,17 +185,30 @@ def main():
     parser.add_argument('-c', '--csv',
                         help='Output CSV records',
                         action='store_true')
+    parser.add_argument('-H', '--header',
+                        help='Print CSV header',
+                        action='store_true')
     parser.add_argument('-n', '--nmessage',
                         help='Number of messages to process (default: infinite)')
+    parser.add_argument('-N', '--netdata',
+                        help='Act as a netdata external plugin',
+                        action='store_true')
+    parser.add_argument('-o', '--output',
+                        help='Specify CSV output file (default: stdout)')
     parser.add_argument('-p', '--port',
-                        help='Serial port to access (default: /dev/serial0',
+                        help='Serial port to access (default: /dev/serial0)',
                         default='/dev/serial0')
     parser.add_argument('-u', '--unknown',
                         help='Show unknown telegrams',
                         action='store_true')
 
     args = parser.parse_args()
-    monitor(args.port, args.nmessage, args.unknown, args.csv)
+    if args.output:
+        out = open(args.output, 'wa')
+    else:
+        out = sys.stdout
+    monitor(args.port, args.nmessage, args.unknown, out, args.csv,
+            args.header, args.netdata)
 
 if __name__ == "__main__":
     main()
