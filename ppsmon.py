@@ -158,11 +158,24 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
     with Serial(port, BAUD, timeout=TIMEOUT) as ser:
         csv_record = {}
         raw_record = {}
-        if header_output:
-            must_print_csv_header = True
-        else:
-            must_print_csv_header = False
+        last_run = 0
         for i in range(int(nmessage)) if nmessage else count():
+            # Wait until update_every has lapsed
+            # Based on pseudocode https://github.com/firehol/netdata/wiki/External-Plugins
+            if netdata_output:
+                now = time()
+                next_run = now - (now % update_every) + update_every
+
+                # sleep() is interruptable
+                while now < next_run:
+                    sleep(next_run - now)
+                    now = time()
+
+                if last_run > 0:
+                    # In microseconds
+                    dt_since_last_run = int((now - last_run) * 1e6)
+
+                last_run = now
             t = get_telegram(ser)
             known = True
             (message, value, raw) = decode_telegram(t)
@@ -176,9 +189,9 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
                     csv_record[message] = value
                     raw_record[message] = raw
                     if len(csv_record) == CSV_ELEMENTS:
-                        if must_print_csv_header:
+                        if header_output:
                             print_csv_header(out, csv_record)
-                            must_print_csv_header = False
+                            header_output = False
                         print_csv(out, csv_record)
                         csv_record = {}
                 else:
@@ -186,43 +199,43 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
                 if netdata_output:
                     raw_record[message] = raw
                     if len(raw_record) == CSV_ELEMENTS:
-                        netdata_set_values(raw_record)
+                        netdata_set_values(raw_record, dt_since_last_run)
                         raw_record = {}
             elif show_unknown:
                 out.write("%-11s %s\n" % (peer, format_telegram(t)))
     GPIO.cleanup()
 
-def netdata_set_values(r):
+def netdata_set_values(r, dt):
     """Output the values of a completed record"""
-    print('BEGIN Heating.ambient')
+    print('BEGIN Heating.ambient %d' % dt)
     print('SET t_room_set = %d' % r['Set room temp'])
     print('SET t_room_actual = %d' % r['Actual room temp'])
     print('SET t_outside = %d' % r['Outside temp'])
     print('END')
 
-    print('BEGIN Heating.dhw')
+    print('BEGIN Heating.dhw %d' % dt)
     print('SET t_dhw_set = %d' % r['Set DHW temp'])
     print('SET t_dhw_actual = %d' % r['Actual DHW temp'])
     print('END')
 
-    print('BEGIN Heating.flow')
+    print('BEGIN Heating.flow %d' % dt)
     print('SET t_heating = %d' % r['Actual flow temp'])
     print('END')
 
-    print('BEGIN Heating.set_point')
+    print('BEGIN Heating.set_point %d' % dt)
     print('SET t_present = %d' % r['Set present room temp'])
     print('SET t_absent = %d' % r['Set absent room temp'])
     print('END')
 
-    print('BEGIN Heating.present')
+    print('BEGIN Heating.present %d' % dt)
     print('SET present = %d' % r['Present'])
     print('END')
 
-    print('BEGIN Heating.mode')
+    print('BEGIN Heating.mode %d' % dt)
     print('SET mode = %d' % r['Mode'])
     print('END')
 
-    print('BEGIN Heating.authority')
+    print('BEGIN Heating.authority %d' % dt)
     print('SET authority = %d' % r['Authority'])
     print('END')
     sys.stdout.flush()
