@@ -28,9 +28,16 @@ import RPi.GPIO as GPIO
 from serial import Serial
 from struct import unpack
 import sys
-from time import time
+try:
+    from time import monotonic as time
+except ImportError:
+    from time import time
 
 BAUD = 4800
+
+# Netdata update interval. This is the time actually taken to refresh an
+# entire record
+update_every = 20
 
 def get_raw_telegram(ser):
     """Receive a telegram sequence, terminated by more than one char time"""
@@ -144,6 +151,8 @@ def print_csv_header(out, d):
 def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
             netdata_output):
     """Monitor PPS traffic"""
+    global update_every
+
     CSV_ELEMENTS = 11   # Number of elements per CSV record
     NBITS = 10 # * bits plus start and stop
     CPS = BAUD / NBITS
@@ -158,24 +167,8 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
     with Serial(port, BAUD, timeout=TIMEOUT) as ser:
         csv_record = {}
         raw_record = {}
-        last_run = 0
+        last_run = dt_since_last_run = 0
         for i in range(int(nmessage)) if nmessage else count():
-            # Wait until update_every has lapsed
-            # Based on pseudocode https://github.com/firehol/netdata/wiki/External-Plugins
-            if netdata_output:
-                now = time()
-                next_run = now - (now % update_every) + update_every
-
-                # sleep() is interruptable
-                while now < next_run:
-                    sleep(next_run - now)
-                    now = time()
-
-                if last_run > 0:
-                    # In microseconds
-                    dt_since_last_run = int((now - last_run) * 1e6)
-
-                last_run = now
             t = get_telegram(ser)
             known = True
             (message, value, raw) = decode_telegram(t)
@@ -198,15 +191,26 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
                     out.write("%-11s %s: %s\n" % (peer, message, value))
                 if netdata_output:
                     raw_record[message] = raw
-                    if len(raw_record) == CSV_ELEMENTS:
+                    # Gather telegrams until update_every has lapsed
+                    # https://github.com/firehol/netdata/wiki/External-Plugins
+                    now = time()
+                    if last_run > 0:
+                        dt_since_last_run = now - last_run
+                    if len(raw_record) == CSV_ELEMENTS and (last_run == 0 or
+                            dt_since_last_run >= update_every):
                         netdata_set_values(raw_record, dt_since_last_run)
                         raw_record = {}
+                        last_run = now
             elif show_unknown:
                 out.write("%-11s %s\n" % (peer, format_telegram(t)))
     GPIO.cleanup()
 
 def netdata_set_values(r, dt):
     """Output the values of a completed record"""
+
+    # Express dt in integer microseconds
+    dt = int(dt * 1e6)
+
     print('BEGIN Heating.ambient %d' % dt)
     print('SET t_room_set = %d' % r['Set room temp'])
     print('SET t_room_actual = %d' % r['Actual room temp'])
@@ -272,9 +276,11 @@ DIMENSION mode 'Mode' 'Mode' 'Timed/Manual/Off'
 def main():
     """Program entry point"""
 
+    global update_every
+
     # Remove any Netdata-supplied update_every argument
     if 'NETDATA_UPDATE_EVERY' in os.environ:
-        update_every = sys.argv[1]
+        update_every = int(sys.argv[1])
         del sys.argv[1]
 
     parser = argparse.ArgumentParser(
