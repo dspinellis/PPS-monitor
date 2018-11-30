@@ -148,8 +148,8 @@ def print_csv_header(out, d):
         out.write(',' + key)
     out.write("\n")
 
-def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
-            netdata_output):
+def monitor(port, nmessage, show_unknown, show_raw, out, csv_output,
+            header_output, netdata_output):
     """Monitor PPS traffic"""
     global update_every
 
@@ -189,6 +189,8 @@ def monitor(port, nmessage, show_unknown, out, csv_output, header_output,
                         csv_record = {}
                 else:
                     out.write("%-11s %s: %s\n" % (peer, message, value))
+                    if show_raw:
+                        out.write("%-11s %s\n" % (peer, format_telegram(t)))
                 if netdata_output:
                     raw_record[message] = raw
                     # Gather telegrams until update_every has lapsed
@@ -301,6 +303,9 @@ def main():
     parser.add_argument('-p', '--port',
                         help='Serial port to access (default: /dev/serial0)',
                         default='/dev/serial0')
+    parser.add_argument('-r', '--raw',
+                        help='Show telegrams also in raw format',
+                        action='store_true')
     parser.add_argument('-u', '--unknown',
                         help='Show unknown telegrams',
                         action='store_true')
@@ -312,7 +317,7 @@ def main():
         out = sys.stdout
     if args.netdata:
         netdata_configure()
-    monitor(args.port, args.nmessage, args.unknown, out, args.csv,
+    monitor(args.port, args.nmessage, args.unknown, args.raw, out, args.csv,
             args.header, args.netdata)
 
 if __name__ == "__main__":
