@@ -90,6 +90,10 @@ def format_telegram(t):
     r += '(T=%s)' % get_temp(t)
     return r
 
+def valid_temp(t):
+    """Return true if the telegram's temperature is valid"""
+    return not (t[6] == 0x80 and t[7] == 0x01)
+
 def decode_telegram(t):
     """Decode the passed telegram into a message and its formatted and
     raw value.
@@ -109,10 +113,12 @@ def decode_telegram(t):
         return ('Actual room temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x29:
         return ('Outside temp', get_temp(t), get_raw_temp(t))
-    elif t[1] == 0x2c:
+    elif t[1] == 0x2c and  valid_temp(t):
         return ('Actual flow temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x2b:
         return ('Actual DHW temp', get_temp(t), get_raw_temp(t))
+    elif t[1] == 0x2e and  valid_temp(t):
+        return ('Actual boiler temp', get_temp(t), get_raw_temp(t))
     elif t[1] == 0x48:
         return ('Authority', ('remote' if t[7] == 0 else 'controller'), t[7])
     elif t[1] == 0x49:
@@ -224,9 +230,15 @@ def netdata_set_values(r, dt):
     print('SET t_dhw_actual = %d' % r['Actual DHW temp'])
     print('END')
 
-    print('BEGIN Heating.flow %d' % dt)
-    print('SET t_heating = %d' % r['Actual flow temp'])
-    print('END')
+    if 'Actual flow temp' in r:
+        print('BEGIN Heating.flow %d' % dt)
+        print('SET t_heating = %d' % r['Actual flow temp'])
+        print('END')
+
+    if 'Actual boiler temp' in r:
+        print('BEGIN Heating.boiler %d' % dt)
+        print('SET t_boiler = %d' % r['Actual boiler temp'])
+        print('END')
 
     print('BEGIN Heating.set_point %d' % dt)
     print('SET t_present = %d' % r['Set present room temp'])
@@ -260,6 +272,9 @@ DIMENSION t_dhw_actual 'Actual DHW temperature' absolute 1 64
 
 CHART Heating.flow 'Heating water T' 'Heating temperature' 'Celsius' Temperatures Heating line 130
 DIMENSION t_heating 'Heating temperature' absolute 1 64
+
+CHART Heating.boiler 'Boiler T' 'Boiler temperature' 'Celsius' Temperatures Heating line 135
+DIMENSION t_boiler 'Heating temperature' absolute 1 64
 
 CHART Heating.set_point 'Set temperatures' 'Set temperatures' 'Celsius' Temperatures Heating line 140
 DIMENSION t_present 'Present room temperature' absolute 1 64
