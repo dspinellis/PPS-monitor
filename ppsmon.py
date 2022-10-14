@@ -1,6 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
-# Copyright 2018 Diomidis Spinellis
+# Copyright 2018-2022 Diomidis Spinellis
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,6 @@
 PPS/H-Bus monitoring program
 """
 
-from __future__ import absolute_import
-from __future__ import print_function
 import argparse
 import os
 from itertools import count
