@@ -26,10 +26,7 @@ import RPi.GPIO as GPIO
 from serial import Serial
 from struct import unpack
 import sys
-try:
-    from time import monotonic as time
-except ImportError:
-    from time import time
+from time import time
 
 BAUD = 4800
 
