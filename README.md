@@ -57,7 +57,7 @@ Room unit:  Mode: timed
 
 ## Example: Process 150 messages, outputting CSV records
 ```
-$ sudo ./ppsio.py  -n 150 -cH
+$ sudo ./ppsmon.py  -n 150 -cH
 time,Actual DHW temp,Actual flow temp,Actual room temp,Authority,Mode,Outside temp,Present,Set DHW temp,Set absent room temp,Set default room temp,Set room temp
 1526237678,54.7,22.2,21.8,remote,timed,18.3,true,40.0,15.0,20.0,19.0
 1526237698,54.6,22.2,21.8,remote,timed,18.3,true,40.0,15.0,20.0,19.0
