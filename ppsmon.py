@@ -141,14 +141,14 @@ def decode_peer(t):
 def print_csv(out, d):
     """Output the elements of the passed CSV record in a consistent order"""
     out.write(str(int(time())))
-    for key in sorted(d.iterkeys()):
+    for key in sorted(d):
         out.write(',' + d[key])
     out.write("\n")
 
 def print_csv_header(out, d):
     """Output the header of the passed CSV record in a consistent order"""
     out.write('time')
-    for key in sorted(d.iterkeys()):
+    for key in sorted(d):
         out.write(',' + key)
     out.write("\n")
 
