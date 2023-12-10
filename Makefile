@@ -1,2 +1,2 @@
 install:
-	install  ppsmon.py /usr/lib/netdata/plugins.d/ppsmon.plugin
+	install  ppsmon.py /usr/local/lib/
